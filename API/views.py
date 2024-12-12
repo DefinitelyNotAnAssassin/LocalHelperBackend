@@ -16,6 +16,27 @@ def jobs(request):
     jobs = Job.objects.all()
     return JsonResponse({"jobs": list(jobs.values())})
 
+@api_view(['GET'])
+def job(request, id):
+    try:
+        job = Job.objects.get(id=id)
+        job_data = {
+            "id": job.id,
+            "title": job.title,
+            "description": job.description,
+            "address": job.address,
+            "salary": job.salary,
+            "company_id": job.company_id,
+            "owner_id": job.owner_id,
+            "created_at": job.created_at,
+            "status": job.status,
+            "slots": job.slots,
+            "thumbnail": job.thumbnail.url if job.thumbnail else None
+        }
+        return JsonResponse({"job": job_data})
+    except Job.DoesNotExist:
+        return JsonResponse({"error": "Job not found"}, status=404)
+
 @csrf_exempt    
 def login(request):
     if request.method == "POST":
@@ -92,6 +113,7 @@ def refresh_token(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def verify_auth(request):
+    print(request.user)
     if request.user.is_authenticated: 
         user = { 
             "id": request.user.id, 
@@ -111,3 +133,66 @@ def verify_auth(request):
           
         
         
+@api_view(['POST']) 
+@permission_classes([IsAuthenticated])
+def apply_job(request, id):
+    if request.method == "POST":
+        job = Job.objects.get(id=id)
+        application = JobApplication(job=job, applicant=request.user)
+        application.save()
+        # remove one slot from the job 
+        job.slots -= 1 
+        job.save() 
+        # remove the job from saved jobs 
+        request.user.saved_jobs.remove(job)
+        return JsonResponse({"message": "Application submitted successfully"})
+    return JsonResponse({"error": "Invalid request"}, status=400)        
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_job(request, id):
+    if request.method == "POST":
+        job = Job.objects.get(id=id)
+        request.user.saved_jobs.add(job)
+        return JsonResponse({"message": "Job saved successfully"})
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def saved_jobs(request):
+    print(request.user)
+    jobs = request.user.saved_jobs.all()
+    return JsonResponse({"jobs": list(jobs.values())})
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def jobs_applied(request):
+    job_applications = JobApplication.objects.filter(applicant=request.user)
+    jobs = []
+    for application in job_applications:
+        job = application.job
+        job_data = {
+            "id": job.id,
+            "title": job.title,
+            "description": job.description,
+            "address": job.address,
+            "salary": job.salary,
+            "company_id": job.company_id,
+            "owner_id": job.owner_id,
+            "created_at": job.created_at,
+            "status": application.status,
+            "slots": job.slots,
+            "thumbnail": job.thumbnail.url if job.thumbnail else None,
+            "application_date": application.created_at,
+            "application_status": application.status
+        }
+        jobs.append(job_data)
+    return JsonResponse({"jobs": jobs})
+
+
