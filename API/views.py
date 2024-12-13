@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated 
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password
+from django.db.utils import IntegrityError
 # permission_classes 
 
 import json
@@ -60,11 +61,11 @@ def login(request):
 @csrf_exempt 
 def signup(request):
     if request.method == "POST":
-        data = request.body.decode('utf-8') 
-        data = json.loads(data) 
         account_type = request.GET.get('type')
-        if account_type == "employee": 
-            print("employee")
+        
+        if account_type == "employee":
+            data = request.body.decode('utf-8') 
+            data = json.loads(data) 
             print(data)
             password = data.get('password')
             data['password'] = make_password(password)
@@ -81,15 +82,40 @@ def signup(request):
                 contact_number=data.get('contactNo')
             )
         elif account_type == "employer": 
-            user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
-            user.first_name = data.get('company_name')
+            print("employer")
+            try:
+                data = request.POST 
+                files = request.FILES
+                # get the 'companyLogo' 
+                files = files.get('companyLogo')
+                print(data)
+                print(files)
+                user = Account.objects.create_user(
+                    first_name=data.get('eFName'),   
+                    last_name=data.get('eLName'),
+                    username=data.get('email'),
+                    email=data.get('email'),
+                    password=data.get('password'),
+                    account_type="Employer",
+                    contact_number=data.get('contactNo'),
+                    sex = data.get('sex'),
+                )
+                
+                company = Company(name=data.get('companyName'),logo = files ,  owner=user)
+                company.save()
+                
+                
+
+                    
+                return JsonResponse({"message": "Account created successfully", "user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "role": user.account_type}})
+            except IntegrityError as e:
+                return HttpResponse("Invalid request", status=400)
         else:
-            return JsonResponse({"status" : 401,"message": "Invalid account type"})
-        
-        user.save()
-        access_token = RefreshToken.for_user(user)  
-        return JsonResponse({"message": "Account created successfully", "access": str(access_token.access_token), "refresh": str(access_token)})
-        
+
+            user.save()
+            access_token = RefreshToken.for_user(user)  
+            return JsonResponse({"message": "Account created successfully", "access": str(access_token.access_token), "refresh": str(access_token)})
+
         
         
         
