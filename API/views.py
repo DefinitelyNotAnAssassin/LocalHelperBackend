@@ -222,3 +222,7 @@ def jobs_applied(request):
     return JsonResponse({"jobs": jobs})
 
 
+
+
+def hello_world(request): 
+    return HttpResponse("Hello world")

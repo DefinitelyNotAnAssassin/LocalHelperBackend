@@ -14,4 +14,5 @@ urlpatterns = [
         path('jobs/<int:id>/save/', views.save_job, name='save_job'),
         path('saved_jobs/', views.saved_jobs, name='saved_jobs'),
         path('jobs_applied/', views.jobs_applied, name='jobs_applied'),
+        path('hello_world', views.hello_world, name='hello_world'),
     ]
