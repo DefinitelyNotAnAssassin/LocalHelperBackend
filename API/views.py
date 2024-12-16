@@ -1,13 +1,12 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import authenticate, login as login_user, logout as logout_user
-from Models.models import Job, JobApplication, Company, Account
+from Models.models import Job, JobApplication, Company, Account, UserResume
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated 
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password
-from django.db.utils import IntegrityError
 # permission_classes 
 
 import json
@@ -62,10 +61,10 @@ def login(request):
 def signup(request):
     if request.method == "POST":
         account_type = request.GET.get('type')
-        
-        if account_type == "employee":
+        if account_type == "employee": 
             data = request.body.decode('utf-8') 
             data = json.loads(data) 
+            print("employee")
             print(data)
             password = data.get('password')
             data['password'] = make_password(password)
@@ -81,41 +80,21 @@ def signup(request):
                 address=data.get('address'),
                 contact_number=data.get('contactNo')
             )
+            
+            # create a resume for the user 
+         
         elif account_type == "employer": 
-            print("employer")
-            try:
-                data = request.POST 
-                files = request.FILES
-                # get the 'companyLogo' 
-                files = files.get('companyLogo')
-                print(data)
-                print(files)
-                user = Account.objects.create_user(
-                    first_name=data.get('eFName'),   
-                    last_name=data.get('eLName'),
-                    username=data.get('email'),
-                    email=data.get('email'),
-                    password=data.get('password'),
-                    account_type="Employer",
-                    contact_number=data.get('contactNo'),
-                    sex = data.get('sex'),
-                )
-                
-                company = Company(name=data.get('companyName'),logo = files ,  owner=user)
-                company.save()
-                
-                
-
-                    
-                return JsonResponse({"message": "Account created successfully", "user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "role": user.account_type}})
-            except IntegrityError as e:
-                return HttpResponse("Invalid request", status=400)
+            user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
+            user.first_name = data.get('company_name')
         else:
-
-            user.save()
-            access_token = RefreshToken.for_user(user)  
-            return JsonResponse({"message": "Account created successfully", "access": str(access_token.access_token), "refresh": str(access_token)})
-
+            return JsonResponse({"status" : 401,"message": "Invalid account type"})
+      
+        user.save()
+        resume = UserResume(user=user, experience="", skills="", education="")
+        resume.save()
+        access_token = RefreshToken.for_user(user)  
+        return JsonResponse({"message": "Account created successfully", "access": str(access_token.access_token), "refresh": str(access_token)})
+        
         
         
         
@@ -222,7 +201,188 @@ def jobs_applied(request):
     return JsonResponse({"jobs": jobs})
 
 
+@api_view(['POST'])
+def create_job(request):
+    if request.method == "POST":
+        data = request.body.decode('utf-8')
+        data = json.loads(data)
+        company = Company.objects.get(owner=request.user) 
+        job = Job(
+            title=data.get('jobPosition'),
+            description=data.get('jobDescription'),
+            address=company.address,    
+            salary=data.get('salary'),
+            company=company,
+            owner=request.user,
+            job_type=data.get('jobType'),
+            requirements=data.get('jobRequirements'), 
+            slots=data.get('slots'),    
+            thumbnail=company.logo
+        )
+        job.save()
+        return JsonResponse({"message": "Job created successfully", "job_id": job.id})
+    return JsonResponse({"error": "Invalid request"}, status=400)
 
 
-def hello_world(request): 
-    return HttpResponse("Hello world")
+
+@api_view(['GET'])   
+@permission_classes([IsAuthenticated])
+def jobs_created(request):
+    jobs = Job.objects.filter(owner=request.user)
+    print(jobs)
+    return JsonResponse({"jobs": list(jobs.values())})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_applications(request):
+    if request.user.account_type == "Employer":
+        applications = JobApplication.objects.filter(job__owner=request.user)
+        applications_data = []
+        for application in applications:
+            application_data = {
+                "id": application.id,
+                "job_id": application.job_id,
+                "applicant_id": application.applicant_id,
+                "created_at": application.created_at,
+                "status": application.status
+            }
+            applications_data.append(application_data)
+        return JsonResponse({"applications": applications_data})
+    return JsonResponse({"error": "Unauthorized"}, status=401)
+
+def job_application(request, id):
+    job = Job.objects.get(id=id)
+    application = JobApplication.objects.filter(job=job).all()
+    application_data = []   
+    for app in application:
+        application_data.append({
+            "id": app.id,
+            "applicant_id": app.applicant.id,   
+            "applicant": app.applicant.username,
+            'first_name': app.applicant.first_name, 
+            'last_name': app.applicant.last_name,
+            "status": app.status,
+            "created_at": app.created_at
+        })
+        
+    
+    job_data = { 
+                "title": job.title,
+                "description": job.description,
+                "job_id": job.id,
+                }
+    print(application_data)
+    return JsonResponse({"application": application_data, "job": job_data})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def accept_application(request, id):
+    if request.method == "POST":
+        application = JobApplication.objects.get(id=id)
+        application.status = "Accepted"
+        application.save()
+        return JsonResponse({"message": "Application accepted"})
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reject_application(request, id):
+    if request.method == "POST":
+        application = JobApplication.objects.get(id=id)
+        application.status = "Rejected"
+        application.save()
+        return JsonResponse({"message": "Application rejected"})
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_resume(request):
+    if request.method == "POST":
+        data = request.body.decode('utf-8')
+        data = json.loads(data)
+        try:
+            resume = UserResume.objects.get(user=request.user)
+            resume.experience = data.get('experience')
+            resume.skills = data.get('skills')
+            resume.education = data.get('education')
+            resume.save()
+            return JsonResponse({"message": "Resume updated successfully"})
+        except UserResume.DoesNotExist:
+            resume = UserResume(
+                user=request.user,
+                experience=data.get('experience'),
+                skills=data.get('skills'),
+                education=data.get('education')
+            )
+            resume.save()
+            return JsonResponse({"message": "Resume created successfully"})
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_resume(request):
+    try:
+        resume = UserResume.objects.get(user=request.user)
+        resume_data = {
+            "experience": resume.experience,
+            "skills": resume.skills,
+            "education": resume.education
+        }
+        return JsonResponse(resume_data)
+    except UserResume.DoesNotExist:
+        return JsonResponse({"error": "Resume not found"}, status=404)
+    
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def applicant_resume(request, id):
+    try:
+        user = Account.objects.get(id=id)
+        print(user)
+        resume = UserResume.objects.get(user=user)
+        resume_data = {
+            "experience": resume.experience,
+            "skills": resume.skills,
+            "education": resume.education
+        }
+        return JsonResponse(resume_data)
+    except UserResume.DoesNotExist:
+        return JsonResponse({"error": "Resume not found"}, status=404)
+    except Account.DoesNotExist:    
+        return JsonResponse({"error": "User not found"}, status=404)
+    
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_status(request, id):
+    if request.method == "POST":
+        application = JobApplication.objects.get(id=id)
+        data = request.body.decode('utf-8')
+        data = json.loads(data)
+        status = data.get('status')
+        application.status = status
+        application.save()
+        return JsonResponse({"message": "Status updated successfully"})
+    return JsonResponse({"error": "Invalid request"}, status=400)
+    
+    
+    
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def close_job(request):
+    if request.method == "POST":
+        data = request.body.decode('utf-8')
+        data = json.loads(data)
+        job_id = data.get('jobId')
+        job = Job.objects.get(id=job_id)
+        job.status = "closed"
+        job.save()
+        return JsonResponse({"message": "Job closed successfully"})
+    return JsonResponse({"error": "Invalid request"}, status=400)
+

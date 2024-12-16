@@ -20,6 +20,7 @@ class Account(AbstractUser):
 class Job(models.Model):
     title = models.CharField(max_length=100)
     description = models.TextField()
+    job_type  = models.CharField(max_length=100, default="Full Time") 
     address = models.CharField(max_length=100, blank = True, null = True) 
     salary = models.IntegerField()
     company = models.ForeignKey("Company", on_delete=models.CASCADE)
@@ -28,7 +29,7 @@ class Job(models.Model):
     status = models.CharField(max_length=100, default="Open") 
     slots = models.IntegerField(default=1)
     thumbnail = models.ImageField(upload_to="job_thumbnails", blank=True)    
-    
+    requirements = models.TextField(blank=True, null=True)   
     
     
     def __str__(self):
