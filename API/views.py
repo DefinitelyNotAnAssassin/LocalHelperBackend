@@ -386,3 +386,17 @@ def close_job(request):
         return JsonResponse({"message": "Job closed successfully"})
     return JsonResponse({"error": "Invalid request"}, status=400)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_profile(request):
+    if request.method == "POST":
+        data = request.body.decode('utf-8')
+        data = json.loads(data)
+        user = request.user
+        user.first_name = data.get('firstName')
+        user.last_name = data.get('lastName')
+        user.email = data.get('email')
+        user.date_of_birth = data.get('birthDate')
+        user.save()
+        return JsonResponse({"message": "Profile updated successfully"})
+      
