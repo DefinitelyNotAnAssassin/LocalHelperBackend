@@ -8,8 +8,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password
 # permission_classes 
-
+import datetime
 import json
+from django.db.models import Count
 
 
 def jobs(request):
@@ -400,3 +401,51 @@ def save_profile(request):
         user.save()
         return JsonResponse({"message": "Profile updated successfully"})
       
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_dashboard(request):
+    if request.user.account_type == "Admin":
+        jobs = Job.objects.all()
+        job_applications = JobApplication.objects.all()
+        companies = Company.objects.all()
+        users = Account.objects.all()
+
+        # Calculate age groups
+        from django.db.models import F, ExpressionWrapper, fields
+        from datetime import date
+
+        age_groups = users.annotate(
+            age=ExpressionWrapper(
+                date.today().year - F('date_of_birth__year'),
+                output_field=fields.IntegerField()
+            )
+        ).values('age').annotate(count=Count('id')).order_by('age')
+
+        # Calculate total applications today and this month
+        today = datetime.date.today()
+        total_applications_today = job_applications.filter(created_at__date=today).count()
+        total_applications_this_month = job_applications.filter(created_at__year=today.year, created_at__month=today.month).count()
+
+        # Get job seekers
+        job_seekers = users.filter(account_type="Employee").values('id', 'first_name', 'last_name', 'email', 'date_of_birth')
+
+        # Get companies
+        companies_data = companies.values('id', 'name')
+
+    
+        return JsonResponse({
+            "jobs": jobs.count(),
+            "job_applications": job_applications.count(),
+            "companies": companies.count(),
+            "users": users.count(),
+            "ageGroups": list(age_groups),
+            "totalApplicationsToday": total_applications_today,
+            "totalApplicationsThisMonth": total_applications_this_month,
+            "jobSeekers": list(job_seekers),
+            "companies": list(companies_data)
+        })
+    return JsonResponse({"error": "Unauthorized"}, status=401)
+
+
+

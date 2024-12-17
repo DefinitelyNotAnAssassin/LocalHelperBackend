@@ -25,4 +25,5 @@ urlpatterns = [
         path('change_status/<int:id>/', views.change_status, name='change_status'),
         path('close_job', views.close_job, name='close_job'),
         path('saveProfile', views.save_profile, name='save_profile'),
+        path('adminDashboard', views.admin_dashboard, name='admin_dashboard'),
     ]
