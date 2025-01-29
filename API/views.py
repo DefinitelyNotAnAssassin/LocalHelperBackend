@@ -61,7 +61,7 @@ def login(request):
             else: 
                 return JsonResponse({"message": "Account not verified"}, status=401)        
     else:
-            return HttpResponse("Invalid credentials", status=401)  
+            return HttpResponse("Invalid credentials", status=402)  
     return  HttpResponse("Invalid request", status=400)
 
 
