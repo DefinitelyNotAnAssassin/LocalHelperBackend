@@ -510,9 +510,25 @@ def verify_email(request):
             user = Account.objects.get(email=email)
             if user.otp == otp:
                 user.isVerified = True
-                user.otp = 000000
+                user.otp = 0  # Clear OTP after verification
                 user.save()
-                return JsonResponse({"message": "Email verified successfully"})
+                
+                # Login the user
+                login_user(request, user)
+                
+                # Generate tokens
+                refresh = RefreshToken.for_user(user)
+                return JsonResponse({
+                    "message": "Email verified successfully",
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                    "user": {
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "role": user.account_type
+                    }
+                })
             else:
                 return JsonResponse({"error": "Invalid OTP"}, status=400)
         except Account.DoesNotExist:
