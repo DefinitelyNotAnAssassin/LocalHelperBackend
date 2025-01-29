@@ -11,6 +11,17 @@ class Account(AbstractUser):
     address = models.CharField(max_length=100, blank=True) 
     contact_number = models.CharField(max_length=100, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)  
+    social_media = models.TextField(blank=True)  
+    profile_picture = models.ImageField(upload_to="media/profile_pictures", blank=True)    
+    
+    
+    
+    isVerified = models.BooleanField(default=False)  
+    otp = models.CharField(max_length=100, blank=True)   
+    
+    
+    
+    REQUIRED_FIELDS = ['email', 'account_type']  
     
     def __str__(self):  
         return f"{self.username} {self.account_type}"
@@ -64,4 +75,5 @@ class UserResume(models.Model):
     experience = models.TextField() 
     skills = models.TextField() 
     education = models.TextField() 
+    reason = models.TextField() 
     user = models.ForeignKey(Account, on_delete=models.CASCADE)

@@ -1,16 +1,19 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth import authenticate, login as login_user, logout as logout_user
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.hashers import make_password
+from django.core.mail import send_mail
+from django.db.models import Count
 from Models.models import Job, JobApplication, Company, Account, UserResume
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated 
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.hashers import make_password
-# permission_classes 
+
 import datetime
 import json
-from django.db.models import Count
+import random
 
 
 def jobs(request):
@@ -43,16 +46,20 @@ def login(request):
     if request.method == "POST":
         data = request.body.decode('utf-8')
         data = json.loads(data)
+        print(data)
         email = data.get('email')
         password = data.get('password')
         print(email, password)
-        user = authenticate(request, username=email, password=password)
-        
-       
-        if user:
-            login_user(request, user)
-            refresh = RefreshToken.for_user(user) 
-            return JsonResponse({"message": "Logged in", "refresh": str(refresh), "access": str(refresh.access_token), "user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "role": user.account_type}})         
+        user = Account.objects.get(email=email)        
+        checkpass = user.check_password(password) 
+        if checkpass:
+            if user.isVerified: 
+                login_user(request, user)
+                
+                refresh = RefreshToken.for_user(user) 
+                return JsonResponse({"message": "Logged in", "refresh": str(refresh), "access": str(refresh.access_token), "user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "role": user.account_type}}) 
+            else: 
+                return JsonResponse({"message": "Account not verified"}, status=401)        
         else:
             return HttpResponse("Invalid credentials", status=401)  
     return  HttpResponse("Invalid request", status=400)
@@ -68,11 +75,10 @@ def signup(request):
             print("employee")
             print(data)
             password = data.get('password')
-            data['password'] = make_password(password)
             user = Account.objects.create_user(
                 username=data.get('email'),
                 email=data.get('email'),
-                password=data.get('password'),
+                password=password,
                 account_type="Employee",
                 first_name=data.get('firstName'),
                 last_name=data.get('lastName'),
@@ -83,17 +89,27 @@ def signup(request):
             )
             
             # create a resume for the user 
-         
         elif account_type == "employer": 
+            data = request.POST
+            print(data)
             user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
             user.first_name = data.get('company_name')
         else:
             return JsonResponse({"status" : 401,"message": "Invalid account type"})
-      
+
+        otp = str(random.randint(100000, 999999))    
+        send_mail(
+            'Verify your account',
+            f'Your OTP is {otp}. Please verify your account by clicking the following link: http://localhost:5173/verifyEmail?email={user.email}&otp={otp}',
+            'no-reply@example.com',
+            [user.email],
+        )
+        user.otp = otp  
         user.save()
-        resume = UserResume(user=user, experience="", skills="", education="")
+        resume = UserResume(user=user, experience="", skills="", education="", reason = "")
         resume.save()
         access_token = RefreshToken.for_user(user)  
+        
         return JsonResponse({"message": "Account created successfully", "access": str(access_token.access_token), "refresh": str(access_token)})
         
         
@@ -305,11 +321,13 @@ def save_resume(request):
     if request.method == "POST":
         data = request.body.decode('utf-8')
         data = json.loads(data)
+        print(data)
         try:
             resume = UserResume.objects.get(user=request.user)
             resume.experience = data.get('experience')
             resume.skills = data.get('skills')
             resume.education = data.get('education')
+            resume.reason = data.get('reason')
             resume.save()
             return JsonResponse({"message": "Resume updated successfully"})
         except UserResume.DoesNotExist:
@@ -317,7 +335,8 @@ def save_resume(request):
                 user=request.user,
                 experience=data.get('experience'),
                 skills=data.get('skills'),
-                education=data.get('education')
+                education=data.get('education'),
+                reason = data.get('reason')
             )
             resume.save()
             return JsonResponse({"message": "Resume created successfully"})
@@ -332,7 +351,9 @@ def get_resume(request):
         resume_data = {
             "experience": resume.experience,
             "skills": resume.skills,
-            "education": resume.education
+            "education": resume.education, 
+            "reason": resume.reason
+            
         }
         return JsonResponse(resume_data)
     except UserResume.DoesNotExist:
@@ -349,7 +370,8 @@ def applicant_resume(request, id):
         resume_data = {
             "experience": resume.experience,
             "skills": resume.skills,
-            "education": resume.education
+            "education": resume.education, 
+            "reason": resume.reason 
         }
         return JsonResponse(resume_data)
     except UserResume.DoesNotExist:
@@ -393,11 +415,13 @@ def save_profile(request):
     if request.method == "POST":
         data = request.body.decode('utf-8')
         data = json.loads(data)
+        print(data)
         user = request.user
         user.first_name = data.get('firstName')
         user.last_name = data.get('lastName')
         user.email = data.get('email')
         user.date_of_birth = data.get('birthDate')
+        user.social_media = data.get('socialMedia')  
         user.save()
         return JsonResponse({"message": "Profile updated successfully"})
       
@@ -449,3 +473,49 @@ def admin_dashboard(request):
 
 
 
+
+
+def applicant_contact(request, applicantId):
+    try:
+        applicant = Account.objects.get(id=applicantId)
+        return JsonResponse({"name": applicant.first_name + ' ' + applicant.last_name, "email": applicant.email, "phone": applicant.contact_number, "social_media": applicant.social_media})
+    except Account.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_job(request, id):
+    try:
+        job = Job.objects.get(id=id, owner=request.user)
+        data = json.loads(request.body.decode('utf-8'))
+        job.title = data.get('title', job.title)
+        job.description = data.get('description', job.description)
+        job.status = data.get('status', job.status)
+        job.slots = data.get('slots', job.slots)
+        job.job_type = data.get('job_type', job.job_type)
+        job.requirements = data.get('requirements', job.requirements)
+        job.save()
+        return JsonResponse({"message": "Job updated successfully"})
+    except Job.DoesNotExist:
+        return JsonResponse({"error": "Job not found"}, status=404)
+
+@csrf_exempt
+def verify_email(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+        email = data.get('email')
+        otp = data.get('otp')
+        
+        try:
+            user = Account.objects.get(email=email)
+            if user.otp == otp:
+                user.isVerified = True
+                user.otp = 000000
+                user.save()
+                return JsonResponse({"message": "Email verified successfully"})
+            else:
+                return JsonResponse({"error": "Invalid OTP"}, status=400)
+        except Account.DoesNotExist:
+            return JsonResponse({"error": "User not found"}, status=404)
+            
+    return JsonResponse({"error": "Invalid request"}, status=400)
