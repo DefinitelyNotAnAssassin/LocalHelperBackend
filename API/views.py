@@ -61,7 +61,7 @@ def login(request):
             else: 
                 return JsonResponse({"message": "Account not verified"}, status=401)        
         else:
-            return HttpResponse("Invalid credentials", status=401)  
+            return HttpResponse("Invalid credentials", status=402)  
     return  HttpResponse("Invalid request", status=400)
 
 
@@ -159,16 +159,22 @@ def verify_auth(request):
 @permission_classes([IsAuthenticated])
 def apply_job(request, id):
     if request.method == "POST":
+        # Check if user has a resume with content
+        try:
+            resume = UserResume.objects.get(user=request.user)
+            if not resume.experience or not resume.skills or not resume.education or not resume.reason:
+                return JsonResponse({"error": "Please complete your resume before applying"}, status=400)
+        except UserResume.DoesNotExist:
+            return JsonResponse({"error": "Please create a resume before applying"}, status=400)
+
         job = Job.objects.get(id=id)
         application = JobApplication(job=job, applicant=request.user)
         application.save()
-        # remove one slot from the job 
         job.slots -= 1 
         job.save() 
-        # remove the job from saved jobs 
         request.user.saved_jobs.remove(job)
         return JsonResponse({"message": "Application submitted successfully"})
-    return JsonResponse({"error": "Invalid request"}, status=400)        
+    return JsonResponse({"error": "Invalid request"}, status=400)
 
 
 @api_view(['POST'])
@@ -534,4 +540,16 @@ def verify_email(request):
         except Account.DoesNotExist:
             return JsonResponse({"error": "User not found"}, status=404)
             
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def remove_saved_job(request, id):
+    if request.method == "POST":
+        try:
+            job = Job.objects.get(id=id)
+            request.user.saved_jobs.remove(job)
+            return JsonResponse({"message": "Job removed from saved jobs successfully"})
+        except Job.DoesNotExist:
+            return JsonResponse({"error": "Job not found"}, status=404)
     return JsonResponse({"error": "Invalid request"}, status=400)

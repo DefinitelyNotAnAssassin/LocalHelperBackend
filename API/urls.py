@@ -13,6 +13,7 @@ urlpatterns = [
         path('jobs/<int:id>/', views.job, name='job'),
         path('jobs/<int:id>/apply/', views.apply_job, name='apply_job'),
         path('jobs/<int:id>/save/', views.save_job, name='save_job'),
+        path('jobs/<int:id>/remove-saved/', views.remove_saved_job, name='remove_saved_job'),
         path('saved_jobs/', views.saved_jobs, name='saved_jobs'),
         path('jobs_applied/', views.jobs_applied, name='jobs_applied'),
         path('jobs_created/', views.jobs_created, name='jobs_created'), 
