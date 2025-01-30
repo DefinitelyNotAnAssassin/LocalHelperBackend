@@ -60,7 +60,7 @@ def login(request):
                 return JsonResponse({"message": "Logged in", "refresh": str(refresh), "access": str(refresh.access_token), "user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "role": user.account_type}}) 
             else: 
                 return JsonResponse({"message": "Account not verified"}, status=401)        
-    else:
+        else:
             return HttpResponse("Invalid credentials", status=402)  
     return  HttpResponse("Invalid request", status=400)
 
