@@ -30,4 +30,5 @@ urlpatterns = [
         path('adminDashboard', views.admin_dashboard, name='admin_dashboard'),
         path('jobs/<int:id>/update/', views.update_job, name='update_job'),
         path('verify-email', views.verify_email, name='verify_email'),
+        path('job_applications/<int:id>/cancel/', views.cancel_application, name='cancel_application'),
     ]

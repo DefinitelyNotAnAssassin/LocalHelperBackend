@@ -60,7 +60,7 @@ def login(request):
                 return JsonResponse({"message": "Logged in", "refresh": str(refresh), "access": str(refresh.access_token), "user": {"email": user.email, "first_name": user.first_name, "last_name": user.last_name, "role": user.account_type}}) 
             else: 
                 return JsonResponse({"message": "Account not verified"}, status=401)        
-        else:
+    else:
             return HttpResponse("Invalid credentials", status=402)  
     return  HttpResponse("Invalid request", status=400)
 
@@ -91,17 +91,9 @@ def signup(request):
             # create a resume for the user 
         elif account_type == "employer": 
             data = request.POST
-            files = request.FILES 
-            
             print(data)
             user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
             user.first_name = data.get('company_name')
-            # The code snippet appears to be creating an instance of a `Company` class with the
-            # `owner` attribute set to a variable `user` and the `name` attribute set to a variable
-            # `dat`. However, the code is incomplete and contains syntax errors.
-            
-            company = Company(owner=user, name=data.get('company_name'),  address=data.get('companyAddress'), logo=files.get('logo')) 
-            company.save()
         else:
             return JsonResponse({"status" : 401,"message": "Invalid account type"})
 
@@ -174,6 +166,10 @@ def apply_job(request, id):
                 return JsonResponse({"error": "Please complete your resume before applying"}, status=400)
         except UserResume.DoesNotExist:
             return JsonResponse({"error": "Please create a resume before applying"}, status=400)
+
+        # Check if user has already applied for the job
+        if JobApplication.objects.filter(job_id=id, applicant=request.user).exists():
+            return JsonResponse({"error": "You have already applied for this job"}, status=400)
 
         job = Job.objects.get(id=id)
         application = JobApplication(job=job, applicant=request.user)
@@ -560,4 +556,27 @@ def remove_saved_job(request, id):
             return JsonResponse({"message": "Job removed from saved jobs successfully"})
         except Job.DoesNotExist:
             return JsonResponse({"error": "Job not found"}, status=404)
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_application(request, id):
+    if request.method == "POST":
+        try:
+            applications = JobApplication.objects.filter(job_id=id, applicant=request.user)
+            if not applications.exists():
+                return JsonResponse({"error": "No applications found for this job"}, status=404)
+            
+            for application in applications:
+                if application.status == "Pending":
+                    job = application.job
+                    job.slots += 1
+                    job.save()
+                    application.delete()
+                else:
+                    return JsonResponse({"error": "Cannot cancel non-pending applications"}, status=400)
+            
+            return JsonResponse({"message": "Applications cancelled successfully"})
+        except JobApplication.DoesNotExist:
+            return JsonResponse({"error": "Application not found"}, status=404)
     return JsonResponse({"error": "Invalid request"}, status=400)
