@@ -34,6 +34,7 @@ class Job(models.Model):
     job_type  = models.CharField(max_length=100, default="Full Time") 
     address = models.CharField(max_length=100, blank = True, null = True) 
     salary = models.IntegerField()
+    salary_type = models.CharField(max_length=100, default="Monthly")    
     company = models.ForeignKey("Company", on_delete=models.CASCADE)
     owner = models.ForeignKey(Account, on_delete=models.CASCADE) 
     created_at = models.DateTimeField(auto_now_add=True)

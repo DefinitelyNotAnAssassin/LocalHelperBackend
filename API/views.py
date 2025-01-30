@@ -18,7 +18,10 @@ import random
 
 def jobs(request):
     jobs = Job.objects.all()
-    return JsonResponse({"jobs": list(jobs.values())})
+    jobs_list = list(jobs.values())
+    for job in jobs_list:
+        job['salary_type'] = Job.objects.get(id=job['id']).salary_type
+    return JsonResponse({"jobs": jobs_list})
 
 @api_view(['GET'])
 def job(request, id):
@@ -30,6 +33,7 @@ def job(request, id):
             "description": job.description,
             "address": job.address,
             "salary": job.salary,
+            "salary_type": job.salary_type,
             "company_id": job.company_id,
             "owner_id": job.owner_id,
             "created_at": job.created_at,
@@ -104,7 +108,7 @@ def signup(request):
         otp = str(random.randint(100000, 999999))    
         send_mail(
             'Verify your account',
-            f'Your OTP is {otp}. Please verify your account by clicking the following link: http://localhost:5173/verifyEmail?email={user.email}&otp={otp}',
+            f'Your OTP is {otp}. Please verify your account by clicking the following link: https://localhelper.vercel.app/verifyEmail?email={user.email}&otp={otp}',
             'no-reply@example.com',
             [user.email],
         )
@@ -202,7 +206,10 @@ def save_job(request, id):
 def saved_jobs(request):
     print(request.user)
     jobs = request.user.saved_jobs.all()
-    return JsonResponse({"jobs": list(jobs.values())})
+    jobs_list = list(jobs.values())
+    for job in jobs_list:
+        job['salary_type'] = Job.objects.get(id=job['id']).salary_type
+    return JsonResponse({"jobs": jobs_list})
 
 
 
@@ -219,6 +226,7 @@ def jobs_applied(request):
             "description": job.description,
             "address": job.address,
             "salary": job.salary,
+            "salary_type": job.salary_type,
             "company_id": job.company_id,
             "owner_id": job.owner_id,
             "created_at": job.created_at,
@@ -243,6 +251,7 @@ def create_job(request):
             description=data.get('jobDescription'),
             address=company.address,    
             salary=data.get('salary'),
+            salary_type=data.get('salaryType'),  # Add salary_type
             company=company,
             owner=request.user,
             job_type=data.get('jobType'),
@@ -260,8 +269,10 @@ def create_job(request):
 @permission_classes([IsAuthenticated])
 def jobs_created(request):
     jobs = Job.objects.filter(owner=request.user)
-    print(jobs)
-    return JsonResponse({"jobs": list(jobs.values())})
+    jobs_list = list(jobs.values())
+    for job in jobs_list:
+        job['salary_type'] = Job.objects.get(id=job['id']).salary_type
+    return JsonResponse({"jobs": jobs_list})
 
 
 @api_view(['GET'])
@@ -508,6 +519,8 @@ def update_job(request, id):
         job.slots = data.get('slots', job.slots)
         job.job_type = data.get('job_type', job.job_type)
         job.requirements = data.get('requirements', job.requirements)
+        job.salary = data.get('salary', job.salary)
+        job.salary_type = data.get('salary_type', job.salary_type)
         job.save()
         return JsonResponse({"message": "Job updated successfully"})
     except Job.DoesNotExist:
