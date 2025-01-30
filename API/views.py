@@ -91,9 +91,13 @@ def signup(request):
             # create a resume for the user 
         elif account_type == "employer": 
             data = request.POST
+            files = request.FILES 
             print(data)
             user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
             user.first_name = data.get('company_name')
+            
+            company = Company(owner=user, name=data.get('company_name'), address=data.get('companyAddress'), logo=files.get('logo'))
+            company.save()
         else:
             return JsonResponse({"status" : 401,"message": "Invalid account type"})
 
