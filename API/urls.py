@@ -31,4 +31,5 @@ urlpatterns = [
         path('jobs/<int:id>/update/', views.update_job, name='update_job'),
         path('verify-email', views.verify_email, name='verify_email'),
         path('job_applications/<int:id>/cancel/', views.cancel_application, name='cancel_application'),
+        path('jobs/<int:id>/check-status/', views.check_job_status, name='check_job_status'),
     ]

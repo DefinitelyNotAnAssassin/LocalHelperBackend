@@ -17,10 +17,30 @@ import random
 
 
 def jobs(request):
-    jobs = Job.objects.all()
-    jobs_list = list(jobs.values())
-    for job in jobs_list:
-        job['salary_type'] = Job.objects.get(id=job['id']).salary_type
+    jobs = Job.objects.select_related('company', 'owner').all()
+    jobs_list = []
+    for job in jobs:
+        job_data = {
+            'id': job.id,
+            'title': job.title,
+            'description': job.description,
+            'address': job.address,
+            'salary': job.salary,
+            'salary_type': job.salary_type,
+            'status': job.status,
+            'slots': job.slots,
+            'thumbnail': job.thumbnail.url if job.thumbnail else None,
+            'company': {
+                'name': job.company.name,
+                'address': job.company.address,
+                'logo': job.company.logo.url if job.company.logo else None,
+            },
+            'employer': {
+                'name': job.owner.first_name,
+                'email': job.owner.email,
+            }
+        }
+        jobs_list.append(job_data)
     return JsonResponse({"jobs": jobs_list})
 
 @api_view(['GET'])
@@ -35,7 +55,18 @@ def job(request, id):
             "salary": job.salary,
             "salary_type": job.salary_type,
             "company_id": job.company_id,
+            "company" : { 
+                "name": job.company.name,
+                "address": job.company.address,
+                "logo": job.company.logo.url if job.company.logo else None
+                },
+            
             "owner_id": job.owner_id,
+            "employer": {   
+                "name": job.owner.first_name,
+                "email": job.owner.email,
+                "contact_number": job.owner.contact_number, 
+            },
             "created_at": job.created_at,
             "status": job.status,
             "slots": job.slots,
@@ -535,7 +566,7 @@ def verify_email(request):
         
         try:
             user = Account.objects.get(email=email)
-            if user.otp == otp:
+            if (user.otp == otp):
                 user.isVerified = True
                 user.otp = 0  # Clear OTP after verification
                 user.save()
@@ -597,3 +628,25 @@ def cancel_application(request, id):
         except JobApplication.DoesNotExist:
             return JsonResponse({"error": "Application not found"}, status=404)
     return JsonResponse({"error": "Invalid request"}, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_job_status(request, id):
+    try:
+        job = Job.objects.get(id=id)
+        is_applied = JobApplication.objects.filter(job=job, applicant=request.user).exists()
+        is_saved = request.user.saved_jobs.filter(id=id).exists()
+        
+        if is_applied:
+            application = JobApplication.objects.get(job=job, applicant=request.user)
+            application_status = application.status
+        else:
+            application_status = None
+            
+        return JsonResponse({
+            "is_applied": is_applied,
+            "is_saved": is_saved,
+            "application_status": application_status
+        })
+    except Job.DoesNotExist:
+        return JsonResponse({"error": "Job not found"}, status=404)
