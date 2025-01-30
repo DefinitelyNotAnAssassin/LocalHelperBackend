@@ -91,9 +91,17 @@ def signup(request):
             # create a resume for the user 
         elif account_type == "employer": 
             data = request.POST
+            files = request.FILES 
+            
             print(data)
             user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
             user.first_name = data.get('company_name')
+            # The code snippet appears to be creating an instance of a `Company` class with the
+            # `owner` attribute set to a variable `user` and the `name` attribute set to a variable
+            # `dat`. However, the code is incomplete and contains syntax errors.
+            
+            company = Company(owner=user, name=data.get('company_name'),  address=data.get('companyAddress'), logo=files.get('logo')) 
+            company.save()
         else:
             return JsonResponse({"status" : 401,"message": "Invalid account type"})
 
