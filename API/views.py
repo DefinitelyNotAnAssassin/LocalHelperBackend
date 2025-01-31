@@ -128,10 +128,11 @@ def signup(request):
             data = request.POST
             files = request.FILES 
             print(data)
+            print(files)
             user = Account.objects.create_user(username=data.get('email'), email=data.get('email'), password=data.get('password'), account_type="Employer")
             user.first_name = data.get('company_name')
             
-            company = Company(owner=user, name=data.get('company_name'), address=data.get('companyAddress'), logo=files.get('logo'))
+            company = Company(owner=user, name=data.get('company_name'), address=data.get('companyAddress'), logo=files.get('companyLogo'))
             company.save()
         else:
             return JsonResponse({"status" : 401,"message": "Invalid account type"})
@@ -488,42 +489,68 @@ def admin_dashboard(request):
     if request.user.account_type == "Admin":
         jobs = Job.objects.all()
         job_applications = JobApplication.objects.all()
-        companies = Company.objects.all()
+        companies = Company.objects.select_related('owner').all()
         users = Account.objects.all()
 
-        # Calculate age groups
-        from django.db.models import F, ExpressionWrapper, fields
-        from datetime import date
+        # Get job seekers with more details
+        job_seekers = users.filter(account_type="Employee").values(
+            'id', 
+            'first_name', 
+            'last_name', 
+            'email', 
+            'date_of_birth',
+            'contact_number',
+            'address'
+        )
 
-        age_groups = users.annotate(
-            age=ExpressionWrapper(
-                date.today().year - F('date_of_birth__year'),
-                output_field=fields.IntegerField()
-            )
-        ).values('age').annotate(count=Count('id')).order_by('age')
+        # Get companies with owner details
+        companies_data = [{
+            'id': company.id,
+            'name': company.name,
+            'owner_name': f"{company.owner.first_name} {company.owner.last_name}",
+            'owner_email': company.owner.email,
+            'address': company.address
+        } for company in companies]
 
-        # Calculate total applications today and this month
+        # Get application statistics by date
         today = datetime.date.today()
-        total_applications_today = job_applications.filter(created_at__date=today).count()
-        total_applications_this_month = job_applications.filter(created_at__year=today.year, created_at__month=today.month).count()
+        
+        # Daily applications for the last 7 days
+        daily_applications = []
+        for i in range(7):
+            date = today - datetime.timedelta(days=i)
+            count = job_applications.filter(created_at__date=date).count()
+            daily_applications.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'count': count
+            })
 
-        # Get job seekers
-        job_seekers = users.filter(account_type="Employee").values('id', 'first_name', 'last_name', 'email', 'date_of_birth')
+        # Monthly applications for the last 6 months
+        monthly_applications = []
+        for i in range(6):
+            month_date = today - datetime.timedelta(days=30*i)
+            count = job_applications.filter(
+                created_at__year=month_date.year,
+                created_at__month=month_date.month
+            ).count()
+            monthly_applications.append({
+                'month': month_date.strftime('%B %Y'),
+                'count': count
+            })
 
-        # Get companies
-        companies_data = companies.values('id', 'name')
-
-    
         return JsonResponse({
-            "jobs": jobs.count(),
-            "job_applications": job_applications.count(),
-            "companies": companies.count(),
-            "users": users.count(),
-            "ageGroups": list(age_groups),
-            "totalApplicationsToday": total_applications_today,
-            "totalApplicationsThisMonth": total_applications_this_month,
+            "statistics": {
+                "total_jobs": jobs.count(),
+                "total_applications": job_applications.count(),
+                "total_companies": companies.count(),
+                "total_users": users.count(),
+            },
+            "applications": {
+                "daily": daily_applications,
+                "monthly": monthly_applications
+            },
             "jobSeekers": list(job_seekers),
-            "companies": list(companies_data)
+            "companies": companies_data
         })
     return JsonResponse({"error": "Unauthorized"}, status=401)
 
