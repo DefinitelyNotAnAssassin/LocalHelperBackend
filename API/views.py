@@ -23,6 +23,8 @@ def jobs(request):
         job_data = {
             'id': job.id,
             'title': job.title,
+            'job_type': job.job_type,   
+            'requirements': job.requirements,
             'description': job.description,
             'address': job.address,
             'salary': job.salary,
@@ -53,6 +55,8 @@ def job(request, id):
             "description": job.description,
             "address": job.address,
             "salary": job.salary,
+            "job_type": job.job_type,   
+            "requirements": job.requirements,
             "salary_type": job.salary_type,
             "company_id": job.company_id,
             "company" : { 
