@@ -50,6 +50,7 @@ def job(request, id):
         job_data = {
             "id": job.id,
             "title": job.title,
+            "job_type": job.job_type,
             "description": job.description,
             "address": job.address,
             "salary": job.salary,
