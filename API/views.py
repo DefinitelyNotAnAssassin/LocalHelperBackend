@@ -20,6 +20,13 @@ def jobs(request):
     jobs = Job.objects.select_related('company', 'owner').all()
     jobs_list = []
     for job in jobs:
+        if job.status.lower() == "closed":   
+            continue 
+        elif job.end_date < datetime.datetime.now(datetime.timezone.utc):     
+            job.status = "closed"
+            job.save()
+            continue
+        
         job_data = {
             'id': job.id,
             'title': job.title,
@@ -31,6 +38,7 @@ def jobs(request):
             'salary_type': job.salary_type,
             'status': job.status,
             'slots': job.slots,
+            'end_date': job.end_date,   
             'thumbnail': job.thumbnail.url if job.thumbnail else None,
             'company': {
                 'name': job.company.name,
@@ -72,6 +80,7 @@ def job(request, id):
                 "contact_number": job.owner.contact_number, 
             },
             "created_at": job.created_at,
+            "end_date": job.end_date,
             "status": job.status,
             "slots": job.slots,
             "thumbnail": job.thumbnail.url if job.thumbnail else None
@@ -189,8 +198,9 @@ def verify_auth(request):
             "email": request.user.email, 
             "date_of_birth": request.user.date_of_birth, 
             "role": request.user.account_type,
-            "contact_number": request.user.contact_number, 
+        "contact_number": request.user.contact_number, 
             "address": request.user.address,
+            "profile_picture": request.user.profile_picture.url if request.user.profile_picture else None   
             
         }
         return JsonResponse(user, safe=False) 
@@ -287,13 +297,14 @@ def create_job(request):
             description=data.get('jobDescription'),
             address=company.address,    
             salary=data.get('salary'),
-            salary_type=data.get('salaryType'),  # Add salary_type
+            salary_type=data.get('salaryType'),  
             company=company,
             owner=request.user,
             job_type=data.get('jobType'),
             requirements=data.get('jobRequirements'), 
             slots=data.get('slots'),    
-            thumbnail=company.logo
+            thumbnail=company.logo,
+            end_date=data.get('endDate')  
         )
         job.save()
         return JsonResponse({"message": "Job created successfully", "job_id": job.id})
@@ -320,6 +331,7 @@ def job_applications(request):
         for application in applications:
             application_data = {
                 "id": application.id,
+                "profile_picture": application.applicant.profile_picture.url if application.applicant.profile_picture else "",
                 "job_id": application.job_id,
                 "applicant_id": application.applicant_id,
                 "created_at": application.created_at,
@@ -340,6 +352,7 @@ def job_application(request, id):
             "applicant": app.applicant.username,
             'first_name': app.applicant.first_name, 
             'last_name': app.applicant.last_name,
+            'profile_picture': app.applicant.profile_picture.url if app.applicant.profile_picture else "/media/default-profile.jpg",    
             "status": app.status,
             "created_at": app.created_at
         })
@@ -380,29 +393,37 @@ def reject_application(request, id):
 @permission_classes([IsAuthenticated])
 def save_resume(request):
     if request.method == "POST":
-        data = request.body.decode('utf-8')
-        data = json.loads(data)
-        print(data)
         try:
             resume = UserResume.objects.get(user=request.user)
-            resume.experience = data.get('experience')
-            resume.skills = data.get('skills')
-            resume.education = data.get('education')
-            resume.reason = data.get('reason')
-            resume.save()
-            return JsonResponse({"message": "Resume updated successfully"})
         except UserResume.DoesNotExist:
-            resume = UserResume(
-                user=request.user,
-                experience=data.get('experience'),
-                skills=data.get('skills'),
-                education=data.get('education'),
-                reason = data.get('reason')
-            )
-            resume.save()
-            return JsonResponse({"message": "Resume created successfully"})
-    return JsonResponse({"error": "Invalid request"}, status=400)
+            resume = UserResume(user=request.user)
 
+        # Handle text fields
+        resume.experience = request.POST.get('experience', '')
+        resume.skills = request.POST.get('skills', '')
+        resume.education = request.POST.get('education', '')
+        resume.reason = request.POST.get('reason', '')
+
+        # Handle file uploads with validation
+        for field in ['experience_attachment', 'skills_attachment', 'education_attachment']:
+            if field in request.FILES:
+                file = request.FILES[field]
+                # Validate file size (e.g., 5MB limit)
+                if file.size > 5 * 1024 * 1024:
+                    return JsonResponse({
+                        "error": f"File {field} is too large. Maximum size is 5MB"
+                    }, status=400)
+                # Validate file type
+                if not file.content_type.startswith('image/'):
+                    return JsonResponse({
+                        "error": f"File {field} must be an image"
+                    }, status=400)
+                setattr(resume, field, file)
+
+        resume.save()
+        return JsonResponse({"message": "Resume updated successfully"})
+
+    return JsonResponse({"error": "Invalid request"}, status=400)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -412,9 +433,11 @@ def get_resume(request):
         resume_data = {
             "experience": resume.experience,
             "skills": resume.skills,
-            "education": resume.education, 
-            "reason": resume.reason
-            
+            "education": resume.education,
+            "reason": resume.reason,
+            "experience_attachment": resume.experience_attachment.url if resume.experience_attachment else None,
+            "skills_attachment": resume.skills_attachment.url if resume.skills_attachment else None,
+            "education_attachment": resume.education_attachment.url if resume.education_attachment else None
         }
         return JsonResponse(resume_data)
     except UserResume.DoesNotExist:
@@ -426,13 +449,15 @@ def get_resume(request):
 def applicant_resume(request, id):
     try:
         user = Account.objects.get(id=id)
-        print(user)
         resume = UserResume.objects.get(user=user)
         resume_data = {
             "experience": resume.experience,
             "skills": resume.skills,
             "education": resume.education, 
-            "reason": resume.reason 
+            "reason": resume.reason,
+            "experience_attachment": resume.experience_attachment.url if resume.experience_attachment else None,
+            "skills_attachment": resume.skills_attachment.url if resume.skills_attachment else None,
+            "education_attachment": resume.education_attachment.url if resume.education_attachment else None
         }
         return JsonResponse(resume_data)
     except UserResume.DoesNotExist:
@@ -474,23 +499,44 @@ def close_job(request):
 @permission_classes([IsAuthenticated])
 def save_profile(request):
     if request.method == "POST":
-        data = request.body.decode('utf-8')
-        data = json.loads(data)
-        print(data)
-        user = request.user
-        user.first_name = data.get('firstName')
-        user.last_name = data.get('lastName')
-        user.email = data.get('email')
-        user.date_of_birth = data.get('birthDate')
-        user.social_media = data.get('socialMedia')  
-        user.save()
-        return JsonResponse({"message": "Profile updated successfully"})
-      
+        try:
+            user = request.user
+            
+            # Handle profile picture upload
+            if 'profile_picture' in request.FILES:
+                file = request.FILES['profile_picture']
+                # Validate file size (5MB limit)
+                if file.size > 5 * 1024 * 1024:
+                    return JsonResponse({
+                        "error": "Profile picture is too large. Maximum size is 5MB"
+                    }, status=400)
+                # Validate file type
+                if not file.content_type.startswith('image/'):
+                    return JsonResponse({
+                        "error": "File must be an image"
+                    }, status=400)
+                user.profile_picture = file
+
+            # Update other fields
+            user.first_name = request.POST.get('firstName')
+            user.last_name = request.POST.get('lastName')
+            user.email = request.POST.get('email')
+            user.date_of_birth = request.POST.get('birthDate')
+            user.social_media = request.POST.get('socialMedia')
+            user.save()
+
+            return JsonResponse({
+                "message": "Profile updated successfully",
+                "profile_picture": user.profile_picture.url if user.profile_picture else None
+            })
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+    return JsonResponse({"error": "Invalid request"}, status=400)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def admin_dashboard(request):
-    if request.user.account_type == "Admin":
+    if request.user.account_type == "Employer":
         jobs = Job.objects.all()
         job_applications = JobApplication.objects.all()
         companies = Company.objects.select_related('owner').all()
@@ -583,6 +629,7 @@ def update_job(request, id):
         job.requirements = data.get('requirements', job.requirements)
         job.salary = data.get('salary', job.salary)
         job.salary_type = data.get('salary_type', job.salary_type)
+        job.end_date = data.get('end_date', job.end_date)
         job.save()
         return JsonResponse({"message": "Job updated successfully"})
     except Job.DoesNotExist:
