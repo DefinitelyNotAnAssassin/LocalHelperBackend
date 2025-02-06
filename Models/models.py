@@ -38,6 +38,7 @@ class Job(models.Model):
     company = models.ForeignKey("Company", on_delete=models.CASCADE)
     owner = models.ForeignKey(Account, on_delete=models.CASCADE) 
     created_at = models.DateTimeField(auto_now_add=True)
+    end_date = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=100, default="Open") 
     slots = models.IntegerField(default=1)
     thumbnail = models.ImageField(upload_to="job_thumbnails", blank=True)    
@@ -74,7 +75,13 @@ class Company(models.Model):
     
 class UserResume(models.Model): 
     experience = models.TextField() 
+    experience_attachment = models.ImageField(upload_to="resume_attachments", blank=True, null=True)
     skills = models.TextField() 
+    skills_attachment = models.ImageField(upload_to="resume_attachments", blank=True, null=True)
     education = models.TextField() 
+    education_attachment = models.ImageField(upload_to="resume_attachments", blank=True, null=True)
     reason = models.TextField() 
     user = models.ForeignKey(Account, on_delete=models.CASCADE)
+    
+    def __str__(self):
+        return f"{self.user.username}'s Resume"
