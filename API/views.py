@@ -198,8 +198,9 @@ def verify_auth(request):
             "email": request.user.email, 
             "date_of_birth": request.user.date_of_birth, 
             "role": request.user.account_type,
-        "contact_number": request.user.contact_number, 
+            "contact_number": request.user.contact_number, 
             "address": request.user.address,
+            "social_media": request.user.social_media,  
             "profile_picture": request.user.profile_picture.url if request.user.profile_picture else None   
             
         }
@@ -435,9 +436,10 @@ def get_resume(request):
             "skills": resume.skills,
             "education": resume.education,
             "reason": resume.reason,
-            "experience_attachment": resume.experience_attachment.url if resume.experience_attachment else None,
-            "skills_attachment": resume.skills_attachment.url if resume.skills_attachment else None,
-            "education_attachment": resume.education_attachment.url if resume.education_attachment else None
+            "experience_attachment": request.build_absolute_uri(resume.experience_attachment.url) if resume.experience_attachment else None,
+            "skills_attachment": request.build_absolute_uri(resume.skills_attachment.url) if resume.skills_attachment else None,
+            "education_attachment": request.build_absolute_uri(resume.education_attachment.url) if resume.education_attachment else None,
+            "uri": request.build_absolute_uri()
         }
         return JsonResponse(resume_data)
     except UserResume.DoesNotExist:
@@ -502,27 +504,12 @@ def save_profile(request):
         try:
             user = request.user
             
-            # Handle profile picture upload
-            if 'profile_picture' in request.FILES:
-                file = request.FILES['profile_picture']
-                # Validate file size (5MB limit)
-                if file.size > 5 * 1024 * 1024:
-                    return JsonResponse({
-                        "error": "Profile picture is too large. Maximum size is 5MB"
-                    }, status=400)
-                # Validate file type
-                if not file.content_type.startswith('image/'):
-                    return JsonResponse({
-                        "error": "File must be an image"
-                    }, status=400)
-                user.profile_picture = file
-
-            # Update other fields
             user.first_name = request.POST.get('firstName')
             user.last_name = request.POST.get('lastName')
             user.email = request.POST.get('email')
             user.date_of_birth = request.POST.get('birthDate')
             user.social_media = request.POST.get('socialMedia')
+            user.address = request.POST.get('address')
             user.save()
 
             return JsonResponse({
@@ -540,7 +527,7 @@ def admin_dashboard(request):
         jobs = Job.objects.all()
         job_applications = JobApplication.objects.all()
         companies = Company.objects.select_related('owner').all()
-        users = Account.objects.all()
+        users = Account.objects.filter(account_type = "Employee")
 
         # Get job seekers with more details
         job_seekers = users.filter(account_type="Employee").values(
@@ -553,14 +540,22 @@ def admin_dashboard(request):
             'address'
         )
 
-        # Get companies with owner details
-        companies_data = [{
-            'id': company.id,
-            'name': company.name,
-            'owner_name': f"{company.owner.first_name} {company.owner.last_name}",
-            'owner_email': company.owner.email,
-            'address': company.address
-        } for company in companies]
+
+
+        user_applications = JobApplication.objects.all()
+        for index, job in enumerate(user_applications):
+            job_applications[index].applicant = job.applicant
+            job_applications[index].job = job.job
+            job_applications[index].created_at = "123"
+            print("job_applications[index].created_at")
+        jobs = Job.objects.all()
+        
+        
+     
+        
+        
+        
+        
 
         # Get application statistics by date
         today = datetime.date.today()
@@ -588,19 +583,44 @@ def admin_dashboard(request):
                 'count': count
             })
 
+        job_details = list(jobs.values())
+        for job in job_details:
+            job['company'] = Company.objects.get(id=job['company_id']).name
+            job['owner'] = Account.objects.get(id=job['owner_id']).first_name
+
+        application_details = []
+        for application in user_applications:
+            application_data = {
+            "id": application.id,
+            "job": {
+                "id": application.job.id,
+                "title": application.job.title,
+                "company": application.job.company.name,
+            },
+            "applicant": {
+                "id": application.applicant.id,
+                "name": application.applicant.first_name + ' ' + application.applicant.last_name,
+                "email": application.applicant.email,
+            },
+            "created_at": application.created_at,
+            "status": application.status
+            }
+            application_details.append(application_data)
+
         return JsonResponse({
             "statistics": {
-                "total_jobs": jobs.count(),
-                "total_applications": job_applications.count(),
-                "total_companies": companies.count(),
-                "total_users": users.count(),
+            "total_jobs": jobs.count(),
+            "total_applications": job_applications.count(),
+            "total_companies": companies.count(),
+            "total_users": users.count(),
             },
             "applications": {
-                "daily": daily_applications,
-                "monthly": monthly_applications
+            "daily": daily_applications,
+            "monthly": monthly_applications
             },
             "jobSeekers": list(job_seekers),
-            "companies": companies_data
+            "jobs": job_details,
+            "user_applications": application_details,
         })
     return JsonResponse({"error": "Unauthorized"}, status=401)
 
@@ -728,3 +748,59 @@ def check_job_status(request, id):
         })
     except Job.DoesNotExist:
         return JsonResponse({"error": "Job not found"}, status=404)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def remove_resume_attachment(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            field = data.get('field')
+            
+            if field not in ['experience', 'skills', 'education']:
+                return JsonResponse({"error": "Invalid field"}, status=400)
+            
+            resume = UserResume.objects.get(user=request.user)
+            
+            # Get the attachment field
+            attachment_field = field + '_attachment'
+            
+            # Delete the actual file
+            if getattr(resume, attachment_field):
+                getattr(resume, attachment_field).delete(save=False)
+            
+            # Clear the field
+            setattr(resume, attachment_field, None)
+            resume.save()
+            
+            return JsonResponse({"message": f"{field} attachment removed successfully"})
+        except UserResume.DoesNotExist:
+            return JsonResponse({"error": "Resume not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+    return JsonResponse({"error": "Invalid request"}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_profile_picture(request):
+    if request.method == "POST":
+        try:
+            user = request.user
+            file = request.FILES['profile_picture']
+            # Validate file size (5MB limit)
+            if file.size > 5 * 1024 * 1024:
+                return JsonResponse({
+                    "error": "Profile picture is too large. Maximum size is 5MB"
+                }, status=400)
+            # Validate file type
+            if not file.content_type.startswith('image/'):
+                return JsonResponse({
+                    "error": "File must be an image"
+                }, status=400)
+            user.profile_picture = file
+            user.save()
+            return JsonResponse({"message": "Profile picture updated successfully", "profile_picture": user.profile_picture.url})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+    return JsonResponse({"error": "Invalid request"}, status=400)
