@@ -651,7 +651,8 @@ def update_job(request, id):
         job.salary = data.get('salary', job.salary)
         job.salary_type = data.get('salary_type', job.salary_type)
         job.end_date = data.get('end_date', job.end_date)
-        if job.end_date < datetime.datetime.now(datetime.timezone.utc):
+        job_end_date = datetime.datetime.strptime(job.end_date, '%Y-%m-%dT%H:%M').date()
+        if job_end_date < datetime.date.today():
             job.status = "closed"
         else:
             job.status = "open"
