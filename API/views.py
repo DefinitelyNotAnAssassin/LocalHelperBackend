@@ -651,6 +651,10 @@ def update_job(request, id):
         job.salary = data.get('salary', job.salary)
         job.salary_type = data.get('salary_type', job.salary_type)
         job.end_date = data.get('end_date', job.end_date)
+        if job.end_date < datetime.datetime.now(datetime.timezone.utc):
+            job.status = "closed"
+        else:
+            job.status = "open"
         job.save()
         return JsonResponse({"message": "Job updated successfully"})
     except Job.DoesNotExist:
