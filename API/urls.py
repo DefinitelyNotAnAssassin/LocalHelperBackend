@@ -32,4 +32,6 @@ urlpatterns = [
         path('verify-email', views.verify_email, name='verify_email'),
         path('job_applications/<int:id>/cancel/', views.cancel_application, name='cancel_application'),
         path('jobs/<int:id>/check-status/', views.check_job_status, name='check_job_status'),
+        path('remove_resume_attachment', views.remove_resume_attachment, name='remove_resume_attachment'),
+        path('updateProfilePicture', views.update_profile_picture, name='update_profile_picture'),
     ]
